@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>雙北・桃園 Funbox 陀螺抽選面板</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; padding: 14px; }
+    header { margin-bottom: 14px; }
+    h1 { font-size: 1.2rem; font-weight: 800; color: #38bdf8; display: flex; align-items: center; gap: 6px; }
+    .updated-at { font-size: 0.75rem; color: #94a3b8; margin-top: 4px; }
+    
+    .btn-copy-all {
+      width: 100%;
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      padding: 12px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      border-radius: 8px;
+      margin: 12px 0;
+      cursor: pointer;
+    }
+    .btn-copy-all:active { background: #1d4ed8; }
+
+    .filter-tabs { display: flex; gap: 8px; margin-bottom: 12px; overflow-x: auto; padding-bottom: 4px; }
+    .tab-btn {
+      background: #1e293b;
+      color: #94a3b8;
+      border: 1px solid #334155;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .tab-btn.active { background: #38bdf8; color: #0f172a; font-weight: 700; border-color: #38bdf8; }
+
+    .store-card { background: #1e293b; border-radius: 10px; padding: 12px; margin-bottom: 10px; border: 1px solid #334155; }
+    .store-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .store-name { font-size: 0.95rem; font-weight: 700; color: #f1f5f9; }
+    .region-tag { background: #334155; color: #93c5fd; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; }
+
+    .lottery-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-top: 1px solid #334155;
+    }
+    .item-name { font-size: 0.85rem; color: #cbd5e1; max-width: 60%; line-height: 1.3; }
+    
+    .btn-lottery {
+      background: #10b981;
+      color: #ffffff;
+      text-decoration: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .btn-lottery:active { background: #059669; }
+    .empty-notice { text-align: center; padding: 40px 0; color: #64748b; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>⚡ 雙北・桃園 陀螺抽選面板</h1>
+    <div class="updated-at" id="time-display">資料載入中...</div>
+  </header>
+
+  <button class="btn-copy-all" onclick="copyAll()">📋 一鍵複製目前門市連結（貼進 LINE 秒開）</button>
+
+  <div class="filter-tabs">
+    <button class="tab-btn active" onclick="filterRegion('全部')">全部 (28間)</button>
+    <button class="tab-btn" onclick="filterRegion('台北市')">台北市 (12間)</button>
+    <button class="tab-btn" onclick="filterRegion('新北市')">新北市 (9間)</button>
+    <button class="tab-btn" onclick="filterRegion('桃園市')">桃園市 (7間)</button>
+  </div>
+
+  <div id="container"></div>
+
+  <script>
+    let globalStores = [];
+    let currentFilter = '全部';
+
+    fetch('data.json')
+      .then(res => res.json())
+      .then(data => {
+        document.getElementById('time-display').innerText = `最後更新時間：${data.updated_at}`;
+        globalStores = data.stores;
+        render();
+      })
+      .catch(() => {
+        document.getElementById('container').innerHTML = '<div class="empty-notice">尚未抓取到最新抽籤，請先至 GitHub 執行手動觸發。</div>';
+      });
+
+    function render() {
+      const container = document.getElementById('container');
+      container.innerHTML = '';
+
+      const filtered = globalStores.filter(s => currentFilter === '全部' || s.region === currentFilter);
+
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="empty-notice">目前此分區尚無 48 小時內的有效陀螺抽籤。</div>';
+        return;
+      }
+
+      filtered.forEach(store => {
+        const card = document.createElement('div');
+        card.className = 'store-card';
+        
+        let rowsHtml = '';
+        store.items.forEach(item => {
+          rowsHtml += `
+            <div class="lottery-row">
+              <span class="item-name">${item.display_name}</span>
+              <a class="btn-lottery" href="${item.url}">🎯 抽 ${item.model_code}</a>
+            </div>
+          `;
+        });
+
+        card.innerHTML = `
+          <div class="store-header">
+            <span class="store-name">${store.name}</span>
+            <span class="region-tag">${store.region}</span>
+          </div>
+          ${rowsHtml}
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function filterRegion(region) {
+      currentFilter = region;
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.innerText.startsWith(region));
+      });
+      render();
+    }
+
+    function copyAll() {
+      const filtered = globalStores.filter(s => currentFilter === '全部' || s.region === currentFilter);
+      if (filtered.length === 0) {
+        alert("目前沒有任何可複製的品項連結！");
+        return;
+      }
+
+      let text = `【${currentFilter} 戰鬥陀螺最新抽選清單】\n\n`;
+      filtered.forEach(store => {
+        text += `📍 ${store.name}\n`;
+        store.items.forEach(item => {
+          text += `👉 [${item.model_code}] ${item.url}\n`;
+        });
+        text += '\n';
+      });
+
+      navigator.clipboard.writeText(text).then(() => {
+        alert("已複製所有連結！請直接貼到 LINE 聊天室（如 Keep 筆記），點擊即可在 LINE 內秒開抽獎。");
+      });
+    }
+  </script>
+</body>
+</html>

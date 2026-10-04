@@ -1,0 +1,35 @@
+name: Update Beyblade Lottery Links
+
+on:
+  schedule:
+    # 台灣時間每週四、五 10:00 - 18:00 (UTC 02:00 - 10:00)，每 30 分鐘自動執行一次
+    - cron: '*/30 2-10 * * 4,5'
+  workflow_dispatch: # 支援在網頁上一鍵手動刷新
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install requests beautifulsoup4
+
+      - name: Run Scraper
+        run: |
+          python fetch_beyblade.py
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add data.json
+          git commit -m "Auto-update beyblade links [skip ci]" || exit 0
+          git push

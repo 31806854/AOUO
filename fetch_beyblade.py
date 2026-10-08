@@ -42,7 +42,7 @@ TARGET_STORES = [
 MODEL_REGEX = re.compile(r'([A-Za-z]{2,3}-\d+)', re.IGNORECASE)
 LINE_REGEX = re.compile(r'https?:\/\/(?:liff\.line\.me\/[\w\-]+|line\.me\/R\/[\w\-\?=&]+|coupon\.line\.me\/[\w\-]+)')
 EXCLUDE_TERMS = ["寶可夢", "PTCG", "鋼彈", "GUNPLA", "TOMICA", "多美", "一番賞", "吉伊卡哇"]
-BEYBLADE_TERMS = ["戰鬥陀螺", "BEYBLADE", "極限突破", "BX-", "UX-", "CX-"]
+BEYBLADE_TERMS = ["戰鬥陀螺", "BEYBLADE", "陀螺", "BX-", "UX-", "CX-"]
 
 def parse_content(text):
     items = []
@@ -77,18 +77,29 @@ def parse_content(text):
 def scrape_with_browser(page, store):
     items = []
     try:
-        # 訪問門市頁面並等待內容渲染
-        page.goto(store["url"], timeout=20000, wait_until="domcontentloaded")
-        page.wait_for_timeout(2500)
-        # 稍微滾動一下觸發貼文載入
-        page.mouse.wheel(0, 1500)
-        page.wait_for_timeout(1500)
+        page.goto(store["url"], timeout=25000, wait_until="domcontentloaded")
+        page.wait_for_timeout(3000)
         
+        # 嘗試點擊或關閉臉書彈出的「稍後再說 / 關閉」登入遮罩
+        for selector in ['div[aria-label="關閉"]', 'div[aria-label="Close"]', 'div[role="button"]:has-text("✕")']:
+            try:
+                page.locator(selector).first.click(timeout=1000)
+            except:
+                pass
+
+        # 模擬真人滑動滾輪帶出貼文
+        page.mouse.wheel(0, 1200)
+        page.wait_for_timeout(2000)
+
         body_text = page.inner_text("body")
         if any(term.lower() in body_text.lower() for term in BEYBLADE_TERMS):
             items = parse_content(body_text)
+            if items:
+                print(f"✅ {store['name']} 成功抓取到 {len(items)} 個品項！")
+        else:
+            print(f"⚠️ {store['name']} 未偵測到陀螺貼文（可能遭遇登入遮罩）")
     except Exception as e:
-        print(f"[{store['name']}] 載入超時或受限: {e}")
+        print(f"❌ {store['name']} 讀取異常: {e}")
     return items
 
 def main():
@@ -98,13 +109,16 @@ def main():
     }
 
     with sync_playwright() as p:
-        iphone = p.devices['iPhone 13']
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(**iphone)
+        # 設定標準手機視窗與語言
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+            viewport={"width": 390, "height": 844},
+            locale="zh-TW"
+        )
         page = context.new_page()
 
         for store in TARGET_STORES:
-            print(f"正在檢查：{store['name']}...")
             lottery_items = scrape_with_browser(page, store)
             dashboard["stores"].append({
                 "name": store["name"],
@@ -116,7 +130,7 @@ def main():
 
     with open("data.json", "w", encoding="utf-8") as f:
         json.dump(dashboard, f, ensure_ascii=False, indent=2)
-    print("data.json 更新完成！")
+    print("data.json 輸出完成！")
 
 if __name__ == "__main__":
     main()

@@ -2,9 +2,8 @@ import json
 import re
 import requests
 from datetime import datetime, timezone, timedelta
-from bs4 import BeautifulSoup
 
-# 完整整合：台北市 12 間、新北市 9 間、桃園市 7 間，共 28 間門市
+# 雙北 21 間 + 桃園 7 間 (共 28 間門市完整名單)
 TARGET_STORES = [
     # --- 台北市 (12間) ---
     {"region": "台北市", "name": "台北忠孝遠東SOGO", "url": "https://www.facebook.com/funboxsogo"},
@@ -41,54 +40,56 @@ TARGET_STORES = [
     {"region": "桃園市", "name": "桃園環球A19", "url": "https://www.facebook.com/profile.php?id=100083960592067"}
 ]
 
-# 型號正則比對：抓出 BX-01、UX-04、CX-17 等編號
 MODEL_REGEX = re.compile(r'([A-Za-z]{2,3}-\d+)', re.IGNORECASE)
 LINE_REGEX = re.compile(r'https?:\/\/(?:liff\.line\.me\/[\w\-]+|line\.me\/R\/[\w\-\?=&]+|coupon\.line\.me\/[\w\-]+)')
 EXCLUDE_TERMS = ["寶可夢", "PTCG", "鋼彈", "GUNPLA", "TOMICA", "多美", "一番賞", "吉伊卡哇"]
 BEYBLADE_TERMS = ["戰鬥陀螺", "BEYBLADE", "極限突破", "BX-", "UX-", "CX-"]
 
-def parse_lines_to_lottery(raw_text):
-    """逐行配對型號與抽獎網址"""
+def parse_content(text):
+    """解析貼文文字，精確配對型號與 LINE 抽籤網址"""
     items = []
-    lines = [line.strip() for line in raw_text.split('\n') if line.strip()]
-    
-    current_model = None
-    current_name = None
+    lines = [l.strip() for l in text.split('\n') if l.strip()]
+    curr_model = None
+    curr_name = None
 
     for line in lines:
         if any(term in line for term in EXCLUDE_TERMS):
             continue
 
-        model_match = MODEL_REGEX.search(line)
+        m_match = MODEL_REGEX.search(line)
         urls = LINE_REGEX.findall(line)
 
-        if model_match:
-            current_model = model_match.group(1).upper()
+        if m_match:
+            curr_model = m_match.group(1).upper()
             cleaned = LINE_REGEX.sub('', line).strip(" :：-–—*【】👉▶")
-            current_name = cleaned if cleaned else current_model
+            curr_name = cleaned if cleaned else curr_model
 
         if urls:
-            target_url = urls[0]
-            btn_model = current_model if current_model else "限定商品"
-            btn_title = current_name if current_name else btn_model
-
+            btn_code = curr_model if curr_model else "限定商品"
+            btn_title = curr_name if curr_name else btn_code
             items.append({
-                "model_code": btn_model,
+                "model_code": btn_code,
                 "display_name": btn_title,
-                "url": target_url
+                "url": urls[0]
             })
-            current_model = None
-            current_name = None
-
+            curr_model = None
+            curr_name = None
     return items
 
-def fetch_store_posts(store):
-    """
-    抓取門市貼文邏輯
-    若頁面暫時無法直讀，保有備用防呆格式，確保 data.json 不會中斷
-    """
-    # 預設維持彈性解析，若 FB 端點直接阻擋，可回傳空清單等待重試
-    return []
+def scrape_store(store):
+    """抓取門市貼文內容（具備防斷線防崩潰處理）"""
+    items = []
+    headers = {
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
+    }
+    try:
+        resp = requests.get(store["url"], headers=headers, timeout=10)
+        if resp.status_code == 200:
+            if any(term.lower() in resp.text.lower() for term in BEYBLADE_TERMS):
+                items = parse_content(resp.text)
+    except Exception as e:
+        print(f"門市 {store['name']} 暫無連線或受限: {e}")
+    return items
 
 def main():
     dashboard = {
@@ -97,18 +98,18 @@ def main():
     }
 
     for store in TARGET_STORES:
-        lottery_items = fetch_store_posts(store)
-        if lottery_items:
-            dashboard["stores"].append({
-                "name": store["name"],
-                "region": store["region"],
-                "items": lottery_items
-            })
+        lottery_items = scrape_store(store)
+        dashboard["stores"].append({
+            "name": store["name"],
+            "region": store["region"],
+            "fb_url": store["url"],
+            "items": lottery_items
+        })
 
-    # 若抓取期無活動，生成預設空白資料結構
+    # 一定會成功產出 data.json，保證 GitHub Actions 永遠不會噴錯
     with open("data.json", "w", encoding="utf-8") as f:
         json.dump(dashboard, f, ensure_ascii=False, indent=2)
-    print("data.json 已產出完成！")
+    print("data.json 生成成功！")
 
 if __name__ == "__main__":
     main()

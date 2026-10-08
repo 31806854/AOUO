@@ -1,9 +1,8 @@
 import json
 import re
-import requests
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
+from playwright.sync_api import sync_playwright
 
-# 雙北 21 間 + 桃園 7 間 (共 28 間門市完整名單)
 TARGET_STORES = [
     # --- 台北市 (12間) ---
     {"region": "台北市", "name": "台北忠孝遠東SOGO", "url": "https://www.facebook.com/funboxsogo"},
@@ -46,7 +45,6 @@ EXCLUDE_TERMS = ["寶可夢", "PTCG", "鋼彈", "GUNPLA", "TOMICA", "多美", "�
 BEYBLADE_TERMS = ["戰鬥陀螺", "BEYBLADE", "極限突破", "BX-", "UX-", "CX-"]
 
 def parse_content(text):
-    """解析貼文文字，精確配對型號與 LINE 抽籤網址"""
     items = []
     lines = [l.strip() for l in text.split('\n') if l.strip()]
     curr_model = None
@@ -76,19 +74,21 @@ def parse_content(text):
             curr_name = None
     return items
 
-def scrape_store(store):
-    """抓取門市貼文內容（具備防斷線防崩潰處理）"""
+def scrape_with_browser(page, store):
     items = []
-    headers = {
-        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148"
-    }
     try:
-        resp = requests.get(store["url"], headers=headers, timeout=10)
-        if resp.status_code == 200:
-            if any(term.lower() in resp.text.lower() for term in BEYBLADE_TERMS):
-                items = parse_content(resp.text)
+        # 訪問門市頁面並等待內容渲染
+        page.goto(store["url"], timeout=20000, wait_until="domcontentloaded")
+        page.wait_for_timeout(2500)
+        # 稍微滾動一下觸發貼文載入
+        page.mouse.wheel(0, 1500)
+        page.wait_for_timeout(1500)
+        
+        body_text = page.inner_text("body")
+        if any(term.lower() in body_text.lower() for term in BEYBLADE_TERMS):
+            items = parse_content(body_text)
     except Exception as e:
-        print(f"門市 {store['name']} 暫無連線或受限: {e}")
+        print(f"[{store['name']}] 載入超時或受限: {e}")
     return items
 
 def main():
@@ -97,19 +97,26 @@ def main():
         "stores": []
     }
 
-    for store in TARGET_STORES:
-        lottery_items = scrape_store(store)
-        dashboard["stores"].append({
-            "name": store["name"],
-            "region": store["region"],
-            "fb_url": store["url"],
-            "items": lottery_items
-        })
+    with sync_playwright() as p:
+        iphone = p.devices['iPhone 13']
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(**iphone)
+        page = context.new_page()
 
-    # 一定會成功產出 data.json，保證 GitHub Actions 永遠不會噴錯
+        for store in TARGET_STORES:
+            print(f"正在檢查：{store['name']}...")
+            lottery_items = scrape_with_browser(page, store)
+            dashboard["stores"].append({
+                "name": store["name"],
+                "region": store["region"],
+                "fb_url": store["url"],
+                "items": lottery_items
+            })
+        browser.close()
+
     with open("data.json", "w", encoding="utf-8") as f:
         json.dump(dashboard, f, ensure_ascii=False, indent=2)
-    print("data.json 生成成功！")
+    print("data.json 更新完成！")
 
 if __name__ == "__main__":
     main()

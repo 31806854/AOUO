@@ -97,7 +97,7 @@
     let globalStores = [];
     let currentFilter = '全部';
 
-    fetch('data.json')
+fetch('data.json?_t=' + new Date().getTime())
       .then(res => res.json())
       .then(data => {
         document.getElementById('time-display').innerText = `最後更新時間：${data.updated_at}`;

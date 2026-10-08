@@ -63,14 +63,23 @@
       white-space: nowrap;
     }
     .btn-lottery:active { background: #059669; }
-    .empty-notice { text-align: center; padding: 40px 0; color: #64748b; font-size: 0.9rem; }
+
+    .btn-fb {
+      background: #334155;
+      color: #94a3b8;
+      text-decoration: none;
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+    }
+    .no-post { font-size: 0.8rem; color: #64748b; padding: 4px 0; }
   </style>
 </head>
 <body>
 
   <header>
     <h1>⚡ 雙北・桃園 陀螺抽選面板</h1>
-    <div class="updated-at" id="time-display">資料載入中...</div>
+    <div class="updated-at" id="time-display">資料讀取中...</div>
   </header>
 
   <button class="btn-copy-all" onclick="copyAll()">📋 一鍵複製目前門市連結（貼進 LINE 秒開）</button>
@@ -96,7 +105,7 @@
         render();
       })
       .catch(() => {
-        document.getElementById('container').innerHTML = '<div class="empty-notice">尚未抓取到最新抽籤，請先至 GitHub 執行手動觸發。</div>';
+        document.getElementById('container').innerHTML = '<div style="text-align:center; padding:30px; color:#94a3b8;">請先至 GitHub Actions 執行手動觸發產生 data.json。</div>';
       });
 
     function render() {
@@ -105,31 +114,35 @@
 
       const filtered = globalStores.filter(s => currentFilter === '全部' || s.region === currentFilter);
 
-      if (filtered.length === 0) {
-        container.innerHTML = '<div class="empty-notice">目前此分區尚無 48 小時內的有效陀螺抽籤。</div>';
-        return;
-      }
-
       filtered.forEach(store => {
         const card = document.createElement('div');
         card.className = 'store-card';
         
-        let rowsHtml = '';
-        store.items.forEach(item => {
-          rowsHtml += `
+        let contentHtml = '';
+        if (store.items && store.items.length > 0) {
+          store.items.forEach(item => {
+            contentHtml += `
+              <div class="lottery-row">
+                <span class="item-name">${item.display_name}</span>
+                <a class="btn-lottery" href="${item.url}">🎯 抽 ${item.model_code}</a>
+              </div>
+            `;
+          });
+        } else {
+          contentHtml = `
             <div class="lottery-row">
-              <span class="item-name">${item.display_name}</span>
-              <a class="btn-lottery" href="${item.url}">🎯 抽 ${item.model_code}</a>
+              <span class="no-post">本週尚未偵測到抽籤貼文</span>
+              <a class="btn-fb" href="${store.fb_url}" target="_blank">粉專查看 ↗</a>
             </div>
           `;
-        });
+        }
 
         card.innerHTML = `
           <div class="store-header">
             <span class="store-name">${store.name}</span>
             <span class="region-tag">${store.region}</span>
           </div>
-          ${rowsHtml}
+          ${contentHtml}
         `;
         container.appendChild(card);
       });
@@ -145,22 +158,27 @@
 
     function copyAll() {
       const filtered = globalStores.filter(s => currentFilter === '全部' || s.region === currentFilter);
-      if (filtered.length === 0) {
-        alert("目前沒有任何可複製的品項連結！");
+      let text = `【${currentFilter} 戰鬥陀螺最新抽選清單】\n\n`;
+      let count = 0;
+
+      filtered.forEach(store => {
+        if (store.items && store.items.length > 0) {
+          text += `📍 ${store.name}\n`;
+          store.items.forEach(item => {
+            text += `👉 [${item.model_code}] ${item.url}\n`;
+            count++;
+          });
+          text += '\n';
+        }
+      });
+
+      if (count === 0) {
+        alert("目前該分區尚無抽獎連結可供複製！");
         return;
       }
 
-      let text = `【${currentFilter} 戰鬥陀螺最新抽選清單】\n\n`;
-      filtered.forEach(store => {
-        text += `📍 ${store.name}\n`;
-        store.items.forEach(item => {
-          text += `👉 [${item.model_code}] ${item.url}\n`;
-        });
-        text += '\n';
-      });
-
       navigator.clipboard.writeText(text).then(() => {
-        alert("已複製所有連結！請直接貼到 LINE 聊天室（如 Keep 筆記），點擊即可在 LINE 內秒開抽獎。");
+        alert("已成功複製！請直接貼至 LINE 聊天室（如 Keep 筆記），點擊即可在 LINE 內秒抽。");
       });
     }
   </script>
